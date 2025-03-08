@@ -89,12 +89,6 @@ Parameter values are automatically captured and formatted intelligently based on
 
 ## Getting Started
 
-### Installation
-
-```
-dotnet add package AnnotationLogger
-```
-
 ### Quick Start
 
 1. Configure the logger:
