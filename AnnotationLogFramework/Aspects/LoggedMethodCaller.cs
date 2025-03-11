@@ -1,6 +1,8 @@
-using System.Diagnostics;
+using System;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading.Tasks;
 
 namespace AnnotationLogger
 {
@@ -28,8 +30,9 @@ namespace AnnotationLogger
 
             var method = methodCallBody.Method;
             var logAttribute = method.GetCustomAttribute<LogAttributeBase>();
+            var dataChangeAttribute = method.GetCustomAttribute<TrackDataChangesAttribute>();
             
-            if (logAttribute == null)
+            if (logAttribute == null && dataChangeAttribute == null)
             {
                 // No logging attribute, just execute the method
                 return methodCall.Compile()();
@@ -46,6 +49,36 @@ namespace AnnotationLogger
                 .ToArray();
             
             var parameterInfos = method.GetParameters();
+            
+            // If we have data change tracking, use specialized handling
+            if (dataChangeAttribute != null && LogManager.GetDataConfiguration().EnableDataChangeTracking)
+            {
+                if (logAttribute != null)
+                {
+                    // Have both log and data change attributes
+                    return LogManager.LogMethodWithDataChanges(
+                        methodCall.Compile(), 
+                        method.Name, 
+                        method.DeclaringType, 
+                        parameters, 
+                        parameterInfos, 
+                        logAttribute,
+                        dataChangeAttribute);
+                }
+                else
+                {
+                    // Only have data change attribute, create a default LogAttribute
+                    var defaultLogAttribute = new LogAttribute(LogManager.GetDataConfiguration().DataChangeLogLevel);
+                    return LogManager.LogMethodWithDataChanges(
+                        methodCall.Compile(), 
+                        method.Name, 
+                        method.DeclaringType, 
+                        parameters, 
+                        parameterInfos, 
+                        defaultLogAttribute,
+                        dataChangeAttribute);
+                }
+            }
             
             // Use our LogManager to handle the method with logging
             return LogManager.LogMethod(
@@ -74,8 +107,9 @@ namespace AnnotationLogger
 
             var method = methodCallBody.Method;
             var logAttribute = method.GetCustomAttribute<LogAttributeBase>();
+            var dataChangeAttribute = method.GetCustomAttribute<TrackDataChangesAttribute>();
             
-            if (logAttribute == null)
+            if (logAttribute == null && dataChangeAttribute == null)
             {
                 // No logging attribute, just execute the method
                 methodCall.Compile()();
@@ -94,14 +128,51 @@ namespace AnnotationLogger
             
             var parameterInfos = method.GetParameters();
             
-            // Use our LogManager to handle the method with logging
-            LogManager.LogMethod(
-                methodCall.Compile(), 
-                method.Name, 
-                method.DeclaringType, 
-                parameters, 
-                parameterInfos, 
-                logAttribute);
+            // For void methods, we'll wrap in a bool-returning function to use our existing infrastructure
+            if (dataChangeAttribute != null && LogManager.GetDataConfiguration().EnableDataChangeTracking)
+            {
+                Func<bool> wrappedMethod = () => {
+                    methodCall.Compile()();
+                    return true;
+                };
+                
+                if (logAttribute != null)
+                {
+                    // Have both log and data change attributes
+                    LogManager.LogMethodWithDataChanges(
+                        wrappedMethod, 
+                        method.Name, 
+                        method.DeclaringType, 
+                        parameters, 
+                        parameterInfos, 
+                        logAttribute,
+                        dataChangeAttribute);
+                }
+                else
+                {
+                    // Only have data change attribute, create a default LogAttribute
+                    var defaultLogAttribute = new LogAttribute(LogManager.GetDataConfiguration().DataChangeLogLevel);
+                    LogManager.LogMethodWithDataChanges(
+                        wrappedMethod, 
+                        method.Name, 
+                        method.DeclaringType, 
+                        parameters, 
+                        parameterInfos, 
+                        defaultLogAttribute,
+                        dataChangeAttribute);
+                }
+            }
+            else
+            {
+                // Use our LogManager to handle the method with logging
+                LogManager.LogMethod(
+                    methodCall.Compile(), 
+                    method.Name, 
+                    method.DeclaringType, 
+                    parameters, 
+                    parameterInfos, 
+                    logAttribute);
+            }
         }
         
         /// <summary>
@@ -122,8 +193,9 @@ namespace AnnotationLogger
 
             var method = methodCallBody.Method;
             var logAttribute = method.GetCustomAttribute<LogAttributeBase>();
+            var dataChangeAttribute = method.GetCustomAttribute<TrackDataChangesAttribute>();
             
-            if (logAttribute == null)
+            if (logAttribute == null && dataChangeAttribute == null)
             {
                 // No logging attribute, just execute the method
                 return await methodCall.Compile()();
@@ -141,8 +213,37 @@ namespace AnnotationLogger
             
             var parameterInfos = method.GetParameters();
             
+            // If we have data change tracking, use specialized handling
+            if (dataChangeAttribute != null && LogManager.GetDataConfiguration().EnableDataChangeTracking)
+            {
+                if (logAttribute != null)
+                {
+                    // Have both log and data change attributes
+                    return await LogManager.LogMethodWithDataChangesAsync<T>(
+                        methodCall.Compile(), 
+                        method.Name, 
+                        method.DeclaringType, 
+                        parameters, 
+                        parameterInfos, 
+                        logAttribute,
+                        dataChangeAttribute);
+                }
+                else
+                {
+                    // Only have data change attribute, create a default LogAttribute
+                    var defaultLogAttribute = new LogAttribute(LogManager.GetDataConfiguration().DataChangeLogLevel);
+                    return await LogManager.LogMethodWithDataChangesAsync<T>(
+                        methodCall.Compile(), 
+                        method.Name, 
+                        method.DeclaringType, 
+                        parameters, 
+                        parameterInfos, 
+                        defaultLogAttribute,
+                        dataChangeAttribute);
+                }
+            }
+            
             // Use our LogManager to handle the async method with logging
-            // Explicitly specify the type parameter to help type inference
             return await LogManager.LogMethodAsync<T>(
                 methodCall.Compile(), 
                 method.Name, 
@@ -170,8 +271,9 @@ namespace AnnotationLogger
 
             var method = methodCallBody.Method;
             var logAttribute = method.GetCustomAttribute<LogAttributeBase>();
+            var dataChangeAttribute = method.GetCustomAttribute<TrackDataChangesAttribute>();
             
-            if (logAttribute == null)
+            if (logAttribute == null && dataChangeAttribute == null)
             {
                 // No logging attribute, just execute the method
                 await methodCall.Compile()();
@@ -190,130 +292,46 @@ namespace AnnotationLogger
             
             var parameterInfos = method.GetParameters();
             
-            // We need a separate implementation for void async methods
-            var stopwatch = Stopwatch.StartNew();
-            Exception exception = null;
-            
-            try
+            // For void-returning async methods
+            if (dataChangeAttribute != null && LogManager.GetDataConfiguration().EnableDataChangeTracking)
             {
-                // Log method entry if appropriate
-                if (ShouldLogMethodEntry(logAttribute))
+                if (logAttribute != null)
                 {
-                    LogMethodEntry(method.Name, method.DeclaringType, parameters, parameterInfos, logAttribute);
+                    // Have both log and data change attributes
+                    await LogManager.LogMethodWithDataChangesAsync(
+                        methodCall.Compile(), 
+                        method.Name, 
+                        method.DeclaringType, 
+                        parameters, 
+                        parameterInfos, 
+                        logAttribute,
+                        dataChangeAttribute);
                 }
-                
-                // Execute the method
-                await methodCall.Compile()();
-            }
-            catch (Exception ex)
-            {
-                exception = ex;
-                throw;
-            }
-            finally
-            {
-                stopwatch.Stop();
-                
-                // Log method exit
-                if (ShouldLogMethodExit(logAttribute, exception))
+                else
                 {
-                    LogMethodExit(method.Name, method.DeclaringType, parameters, parameterInfos, 
-                        null, stopwatch.Elapsed, exception, logAttribute);
+                    // Only have data change attribute, create a default LogAttribute
+                    var defaultLogAttribute = new LogAttribute(LogManager.GetDataConfiguration().DataChangeLogLevel);
+                    await LogManager.LogMethodWithDataChangesAsync(
+                        methodCall.Compile(), 
+                        method.Name, 
+                        method.DeclaringType, 
+                        parameters, 
+                        parameterInfos, 
+                        defaultLogAttribute,
+                        dataChangeAttribute);
                 }
             }
-        }
-        
-        // Helper methods for logging async void methods
-        private static bool ShouldLogMethodEntry(LogAttributeBase logAttribute)
-        {
-            return _configuration?.EnableMethodEntryExit == true && 
-                   logAttribute.Level <= LogLevel.Debug;
-        }
-        
-        private static bool ShouldLogMethodExit(LogAttributeBase logAttribute, Exception exception)
-        {
-            return (_configuration?.EnableMethodEntryExit == true) || 
-                   exception != null;
-        }
-        
-        private static void LogMethodEntry(string methodName, Type declaringType, 
-            object[] parameters, ParameterInfo[] parameterInfos, LogAttributeBase logAttribute)
-        {
-            var entry = new LogEntry
+            else
             {
-                Timestamp = DateTime.UtcNow,
-                MethodName = methodName,
-                ClassName = declaringType.Name,
-                Level = logAttribute.Level,
-                Message = $"Entering {declaringType.Name}.{methodName}"
-            };
-
-            if (_configuration?.EnableParameterLogging == true && 
-                logAttribute.IncludeParameters && parameters != null)
-            {
-                entry.Parameters = CreateParameterDictionary(parameters, parameterInfos);
+                // Use our LogManager to handle the async method with logging
+                await LogManager.LogMethodAsync(
+                    methodCall.Compile(), 
+                    method.Name, 
+                    method.DeclaringType, 
+                    parameters, 
+                    parameterInfos, 
+                    logAttribute);
             }
-
-            _configuration?.Logger?.Log(entry);
         }
-        
-        private static void LogMethodExit(string methodName, Type declaringType, 
-            object[] parameters, ParameterInfo[] parameterInfos, object result, 
-            TimeSpan executionTime, Exception exception, LogAttributeBase logAttribute)
-        {
-            var level = exception != null ? LogLevel.Error : logAttribute.Level;
-            
-            var entry = new LogEntry
-            {
-                Timestamp = DateTime.UtcNow,
-                MethodName = methodName,
-                ClassName = declaringType.Name,
-                Level = level,
-                Message = exception != null 
-                    ? $"Exception in {declaringType.Name}.{methodName}" 
-                    : $"Exiting {declaringType.Name}.{methodName}",
-                Exception = exception
-            };
-
-            if (_configuration?.EnableParameterLogging == true && 
-                logAttribute.IncludeParameters && parameters != null)
-            {
-                entry.Parameters = CreateParameterDictionary(parameters, parameterInfos);
-            }
-
-            if (_configuration?.EnableReturnValueLogging == true && 
-                logAttribute.IncludeReturnValue && result != null && exception == null)
-            {
-                entry.ReturnValue = result;
-            }
-
-            if (_configuration?.EnableExecutionTimeLogging == true && 
-                logAttribute.IncludeExecutionTime)
-            {
-                entry.ExecutionTime = executionTime;
-            }
-
-            _configuration?.Logger?.Log(entry);
-        }
-        
-        private static Dictionary<string, object> CreateParameterDictionary(
-            object[] parameters, ParameterInfo[] parameterInfos)
-        {
-            var dict = new Dictionary<string, object>();
-            
-            if (parameters == null || parameterInfos == null) return dict;
-            
-            for (int i = 0; i < parameters.Length && i < parameterInfos.Length; i++)
-            {
-                dict[parameterInfos[i].Name] = parameters[i];
-            }
-            
-            return dict;
-        }
-        
-        // Reference to configuration for the helper methods
-        private static LoggerConfiguration _configuration => 
-            LogManager.GetConfiguration();
-        
     }
 }
