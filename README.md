@@ -1,4 +1,4 @@
-# AnnotationLogger
+# AnnotationLogger API Documentation
 
 A high-performance, attributes-based .NET logging framework that brings clean code and aspect-oriented programming principles to your application logging.
 
@@ -6,27 +6,7 @@ A high-performance, attributes-based .NET logging framework that brings clean co
 
 ## Overview
 
-AnnotationLogger is an advanced .NET logging framework that leverages C# attributes to provide declarative, aspect-oriented logging with minimal code clutter. By simply annotating your methods with log attributes, you can automatically capture entry/exit tracking, parameter values, return values, and execution times without polluting your business logic with logging code.
-
-## Table of Contents
-
-- [Key Features](#key-features)
-- [Why AnnotationLogger?](#why-annotationlogger)
-- [Getting Started](#getting-started)
-- [Basic Usage](#basic-usage)
-- [Advanced Usage](#advanced-usage)
-  - [Logging Configuration](#logging-configuration)
-  - [Log Levels](#log-levels)
-  - [Correlation IDs](#correlation-ids)
-  - [Performance Considerations](#performance-considerations)
-- [Usage Scenarios](#usage-scenarios)
-  - [API Services](#api-services)
-  - [Microservices](#microservices)
-  - [Enterprise Applications](#enterprise-applications)
-  - [Diagnostic Logging](#diagnostic-logging)
-- [Implementation Details](#implementation-details)
-- [Contributing](#contributing)
-- [License](#license)
+AnnotationLogger is a comprehensive logging framework for .NET applications that provides attribute-based method logging, performance tracking, data change monitoring, and more. The framework is designed to be both simple to use and highly configurable, supporting a variety of logging destinations and formats.
 
 ## Key Features
 
@@ -87,261 +67,623 @@ True aspect-oriented programming for logging, separating cross-cutting concerns 
 
 Parameter values are automatically captured and formatted intelligently based on their type, with special handling for collections, dictionaries, and complex objects.
 
-## Getting Started
+## Core Components
 
-### Quick Start
+### LogManager
 
-1. Configure the logger:
-
-```csharp
-using AnnotationLogger;
-
-// In your application startup
-LogManager.Configure(config =>
-{
-    config.Logger = new ConsoleLogger();
-    config.Environment = EnvironmentType.Development;
-    config.EnableMethodEntryExit = true;
-});
-```
-
-2. Annotate your methods:
+The central static class that manages all logging configurations and operations.
 
 ```csharp
-using AnnotationLogger;
-
-public class CustomerService
+public static class LogManager
 {
-    [LogInfo]
-    public Customer GetCustomer(int id)
-    {
-        // Method logic here
-        return new Customer { Id = id, Name = "Test Customer" };
-    }
+    // Configure general logging settings
+    public static void Configure(Action<LoggerConfiguration> configAction);
     
-    [LogDebug]
-    public async Task<List<Order>> GetCustomerOrdersAsync(int customerId)
-    {
-        // Async method logic
-        return await _orderRepository.GetOrdersForCustomerAsync(customerId);
-    }
+    // Configure data-specific logging features
+    public static void ConfigureDataLogging(Action<DataLoggerConfiguration> configAction);
+    
+    // Get current configurations
+    public static LoggerConfiguration GetConfiguration();
+    public static DataLoggerConfiguration GetDataConfiguration();
+    
+    // Get performance tracking instance
+    public static PerformanceTracker GetPerformanceTracker();
+    
+    // Context management
+    public static Dictionary<string, object> CurrentContext { get; }
+    public static void AddContext(string key, object value);
+    public static void RemoveContext(string key);
+    public static void ClearContext();
+    
+    // Direct logging methods
+    public static void Log(LogLevel level, string message, Dictionary<string, object> context = null);
+    public static void Trace(string message, Dictionary<string, object> context = null);
+    public static void Debug(string message, Dictionary<string, object> context = null);
+    public static void Info(string message, Dictionary<string, object> context = null);
+    public static void Warning(string message, Dictionary<string, object> context = null);
+    public static void Error(string message, Dictionary<string, object> context = null);
+    public static void Critical(string message, Dictionary<string, object> context = null);
+    public static void Exception(Exception exception, string message = null, Dictionary<string, object> context = null);
+    
+    // Data change tracking
+    public static void LogDataChanges<T>(T before, T after, string operationType, string entityId = null, 
+        LogLevel level = LogLevel.Info, Dictionary<string, object> additionalContext = null);
 }
 ```
 
-3. Call methods using the LoggedMethodCaller:
+### LoggedMethodCaller
+
+The main API for automatic method interception and logging.
 
 ```csharp
-using AnnotationLogger;
-
-var customer = LoggedMethodCaller.Call(() => customerService.GetCustomer(123));
-var orders = await LoggedMethodCaller.CallAsync(() => customerService.GetCustomerOrdersAsync(123));
-```
-
-## Basic Usage
-
-### Annotating Methods
-
-Use the pre-defined attribute classes to decorate your methods:
-
-```csharp
-[LogTrace]      // Highly detailed diagnostic information
-[LogDebug]      // Debug-build information
-[LogInfo]       // Standard operational information
-[LogWarning]    // Potential issues that aren't errors
-[LogError]      // Errors and exceptions
-[LogCritical]   // Severe failures
-```
-
-### Customizing Log Attributes
-
-You can customize what gets logged:
-
-```csharp
-[LogInfo(IncludeParameters = true, IncludeReturnValue = true, IncludeExecutionTime = true)]
-public Customer GetCustomer(int id)
+public static class LoggedMethodCaller
 {
-    // Method implementation
+    // Log synchronous methods with return values
+    public static T Call<T>(Expression<Func<T>> methodCall);
+    
+    // Log synchronous methods without return values
+    public static void Call(Expression<Action> methodCall);
+    
+    // Log asynchronous methods with return values
+    public static Task<T> CallAsync<T>(Expression<Func<Task<T>>> methodCall);
+    
+    // Log asynchronous methods without return values
+    public static Task CallAsync(Expression<Func<Task>> methodCall);
 }
 ```
 
-### Using LoggedMethodCaller
+### CorrelationManager
 
-The primary API for invoking methods with logging:
-
-```csharp
-// Method with return value
-Customer customer = LoggedMethodCaller.Call(() => _service.GetCustomer(123));
-
-// Void method
-LoggedMethodCaller.Call(() => _service.UpdateCustomer(customer));
-
-// Async method with return value
-List<Order> orders = await LoggedMethodCaller.CallAsync(() => _service.GetOrdersAsync(123));
-
-// Async void method
-await LoggedMethodCaller.CallAsync(() => _service.ProcessOrderAsync(order));
-```
-
-## Advanced Usage
-
-### Logging Configuration
-
-Configure logging behavior in your application startup:
+Manages correlation IDs for tracking related log entries across multiple components.
 
 ```csharp
-LogManager.Configure(config =>
+public static class CorrelationManager
 {
-    // Use composite logger to send logs to multiple destinations
-    var compositeLogger = new CompositeLogger(LogLevel.Debug);
-    compositeLogger.AddLogger(new ConsoleLogger(LogLevel.Debug));
-    compositeLogger.AddLogger(new FileLogger(LogLevel.Info, "app.log", useStructuredOutput: true));
+    // Gets or sets the current correlation ID
+    public static string CurrentCorrelationId { get; set; }
     
-    config.Logger = compositeLogger;
-    config.Environment = EnvironmentType.Production;
-    config.EnableMethodEntryExit = true;
-    config.EnableParameterLogging = true;
-    config.EnableReturnValueLogging = true;
-    config.EnableExecutionTimeLogging = true;
-});
-```
-
-### Log Levels
-
-AnnotationLogger supports standard log levels:
-
-- **Trace**: Most detailed information for deep diagnostics
-- **Debug**: Information useful for debugging
-- **Info**: General operational information
-- **Warning**: Potential issues that aren't errors
-- **Error**: Exceptions and failures
-- **Critical**: Severe errors that may require immediate attention
-
-### Correlation IDs
-
-For distributed systems, you can track operations across multiple services:
-
-```csharp
-// Set correlation ID at the entry point
-CorrelationManager.StartNewCorrelation();
-
-// Or use an existing correlation ID (e.g., from incoming request)
-string requestCorrelationId = httpContext.Request.Headers["X-Correlation-ID"];
-CorrelationManager.CurrentCorrelationId = requestCorrelationId;
-
-// Correlation ID is automatically included in all log entries
-```
-
-### Performance Considerations
-
-AnnotationLogger uses expression trees and reflection, which has some performance overhead. For extremely performance-critical methods that are called thousands of times per second, consider:
-
-- Using the `[LogTrace]` attribute, which can be disabled in production
-- Disabling parameter logging for methods with large object parameters
-- Using the LoggingAspect direct approach for more control
-
-## Usage Scenarios
-
-### API Services
-
-For RESTful APIs or microservices, annotate your controller methods:
-
-```csharp
-[ApiController]
-[Route("api/[controller]")]
-public class CustomersController : ControllerBase
-{
-    private readonly ICustomerService _customerService;
-    
-    public CustomersController(ICustomerService customerService)
-    {
-        _customerService = customerService;
-    }
-    
-    [HttpGet("{id}")]
-    [LogInfo]
-    public ActionResult<Customer> GetCustomer(int id)
-    {
-        var customer = LoggedMethodCaller.Call(() => _customerService.GetCustomer(id));
-        if (customer == null)
-            return NotFound();
-            
-        return Ok(customer);
-    }
+    // Generate a new correlation ID
+    public static void StartNewCorrelation();
 }
 ```
 
-### Microservices
+## Loggers
 
-For distributed systems with multiple services:
+### ILogger
+
+The core interface that all loggers implement.
 
 ```csharp
-public class OrderProcessor
+public interface ILogger
 {
-    private readonly IMessagePublisher _publisher;
+    void Log(LogEntry entry);
+    bool IsEnabled(LogLevel level);
+}
+```
+
+### ConsoleLogger
+
+Outputs logs to the console with optional color formatting.
+
+```csharp
+public class ConsoleLogger : ILogger
+{
+    public ConsoleLogger(
+        LogLevel minimumLevel = LogLevel.Info, 
+        bool useStructuredOutput = false,
+        bool useColors = true,
+        bool includeTimestamps = true);
+}
+```
+
+### FileLogger
+
+Writes logs to files with optional rotation.
+
+```csharp
+public class FileLogger : ILogger
+{
+    public FileLogger(
+        LogLevel minimumLevel = LogLevel.Info, 
+        string logFilePath = null, 
+        bool useStructuredOutput = false,
+        bool appendToFile = true);
+}
+```
+
+### DatabaseLogger
+
+Stores logs in a SQLite database.
+
+```csharp
+public class DatabaseLogger : ILogger
+{
+    public DatabaseLogger(
+        LogLevel minimumLevel = LogLevel.Info, 
+        string connectionString = "Data Source=logs.db");
+}
+```
+
+### CompositeLogger
+
+Combines multiple loggers for multi-destination logging.
+
+```csharp
+public class CompositeLogger : ILogger
+{
+    public CompositeLogger(LogLevel minimumLevel = LogLevel.Info, bool parallelLogging = false);
+    public CompositeLogger(IEnumerable<ILogger> loggers, LogLevel minimumLevel = LogLevel.Info, bool parallelLogging = false);
     
-    [LogInfo]
-    public async Task ProcessOrderAsync(Order order)
-    {
-        // Process order
+    public void AddLogger(ILogger logger);
+    public bool RemoveLogger(ILogger logger);
+}
+```
+
+### LogRouter
+
+Routes log entries to different loggers based on conditions.
+
+```csharp
+public class LogRouter : ILogger
+{
+    public LogRouter(ILogger defaultLogger);
+    
+    public LogRouter AddRoute(Predicate<LogEntry> condition, ILogger logger);
+}
+```
+
+## Performance Tracking
+
+### PerformanceTracker
+
+Tracks and analyzes method execution times.
+
+```csharp
+public class PerformanceTracker
+{
+    public void TrackExecutionTime(string methodName, long milliseconds);
+    public Dictionary<string, MethodPerformanceStats> GetStats();
+    public MethodPerformanceStats GetStatsForMethod(string methodName);
+    public void Reset();
+}
+
+public class MethodPerformanceStats
+{
+    public string MethodName { get; set; }
+    public int CallCount { get; set; }
+    public double AverageTime { get; set; }
+    public long MinTime { get; set; }
+    public long MaxTime { get; set; }
+    public long TotalTime { get; set; }
+    public double MedianTime { get; set; }
+}
+```
+
+### ProgressLogger
+
+Tracks progress for long-running operations.
+
+```csharp
+public class ProgressLogger : IDisposable
+{
+    public ProgressLogger(
+        string operationName, 
+        int intervalMs = 5000, 
+        ILogger logger = null);
         
-        // Publish event with correlation ID
-        await _publisher.PublishAsync(new OrderProcessedEvent(order.Id)
-        {
-            CorrelationId = CorrelationManager.CurrentCorrelationId
-        });
-    }
+    public void Dispose();
 }
 ```
 
-### Enterprise Applications
+## Log Throttling
 
-For large-scale applications with many components:
+### LogThrottler
+
+Controls log volume for high-frequency operations.
 
 ```csharp
-// Application entry point
-public class Application
+public class LogThrottler
 {
-    public void Initialize()
-    {
-        LogManager.Configure(config =>
-        {
-            // Complex logging setup for enterprise needs
-            var compositeLogger = new CompositeLogger();
-            
-            // Development console logging
-            if (Environment.IsDevelopment())
-            {
-                compositeLogger.AddLogger(new ConsoleLogger(LogLevel.Debug));
-            }
-            
-            // Standard file logging
-            var logPath = Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
-            compositeLogger.AddLogger(new FileLogger(LogLevel.Info, logPath));
-            
-            // Add other log destinations as needed
-            // compositeLogger.AddLogger(new ElasticSearchLogger());
-            // compositeLogger.AddLogger(new AzureAppInsightsLogger());
-            
-            config.Logger = compositeLogger;
-        });
-    }
+    public bool ShouldLog(string key, int maxPerSecond);
+    public void Reset();
 }
 ```
 
-### Diagnostic Logging
+## Logging Attributes
 
-For detailed troubleshooting in complex systems:
+### Method Logging Attributes
 
 ```csharp
-public class DiagnosticService
+// Base attribute class
+public abstract class LogAttributeBase : Attribute, IProgressLoggingOptions
 {
-    [LogTrace(IncludeParameters = true, IncludeReturnValue = true, IncludeExecutionTime = true)]
-    public async Task<DiagnosticResult> RunDiagnosticsAsync(DiagnosticOptions options)
+    public LogLevel Level { get; }
+    public bool IncludeParameters { get; set; } = true;
+    public bool IncludeReturnValue { get; set; } = true;
+    public bool IncludeExecutionTime { get; set; } = true;
+    
+    // Progress logging options
+    public bool EnableProgressLogging { get; set; }
+    public int ProgressLoggingIntervalMs { get; set; } = 5000;
+}
+
+// Concrete logging attributes
+public class LogAttribute : LogAttributeBase
+{
+    public LogAttribute(LogLevel level);
+}
+
+public class LogTraceAttribute : LogAttributeBase { }
+public class LogDebugAttribute : LogAttributeBase { }
+public class LogInfoAttribute : LogAttributeBase { }
+public class LogWarningAttribute : LogAttributeBase { }
+public class LogErrorAttribute : LogAttributeBase { }
+public class LogCriticalAttribute : LogAttributeBase { }
+public class LogProdAttribute : LogAttributeBase { }
+
+// Extension method for enabling progress logging
+public static T WithProgressLogging<T>(this T attribute, int intervalMs = 5000) 
+    where T : LogAttributeBase;
+```
+
+### Data Change Tracking Attributes
+
+```csharp
+// For tracking changes between object states
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public class TrackDataChangesAttribute : Attribute
+{
+    public bool DetailedComparison { get; set; } = true;
+    public int MaxComparisonDepth { get; set; } = 3;
+    public bool IncludeOriginalState { get; set; } = false;
+    public bool IncludeUpdatedState { get; set; } = false;
+    public string OperationType { get; set; }
+}
+
+// For marking parameters that represent the before state
+[AttributeUsage(AttributeTargets.Parameter, AllowMultiple = false, Inherited = false)]
+public class BeforeChangeAttribute : Attribute { }
+
+// For marking parameters that represent the after state
+[AttributeUsage(AttributeTargets.Parameter, AllowMultiple = false, Inherited = false)]
+public class AfterChangeAttribute : Attribute { }
+
+// For excluding properties from comparison
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
+public class ExcludeFromComparisonAttribute : Attribute
+{
+    public string Reason { get; }
+    public ExcludeFromComparisonAttribute(string reason = null);
+}
+```
+
+### Throttling Attribute
+
+```csharp
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public class ThrottleLoggingAttribute : Attribute
+{
+    public int MaxLogsPerSecond { get; set; } = 10;
+    public ThrottleLoggingAttribute(int maxLogsPerSecond = 10);
+}
+```
+
+### Sensitive Data Attributes
+
+```csharp
+// Base attribute
+public abstract class SensitiveDataAttributeBase : Attribute
+{
+    public string Reason { get; }
+    protected SensitiveDataAttributeBase(string reason = null);
+}
+
+// Exclude sensitive data from logs
+public class ExcludeFromLogsAttribute : SensitiveDataAttributeBase
+{
+    public ExcludeFromLogsAttribute(string reason = null);
+}
+
+// Mask sensitive data in logs
+public class MaskInLogsAttribute : SensitiveDataAttributeBase
+{
+    public string MaskingPattern { get; set; } = "***";
+    public bool ShowFirstChars { get; set; } = false;
+    public int FirstCharsCount { get; set; } = 2;
+    public bool ShowLastChars { get; set; } = false;
+    public int LastCharsCount { get; set; } = 2;
+    
+    public MaskInLogsAttribute(string reason = null);
+}
+
+// Redact contents but show structure
+public class RedactContentsAttribute : SensitiveDataAttributeBase
+{
+    public string ReplacementText { get; set; } = "[REDACTED]";
+    public RedactContentsAttribute(string reason = null);
+}
+```
+
+## Configuration
+
+### LoggerConfiguration
+
+Configuration options for the general logging system.
+
+```csharp
+public class LoggerConfiguration
+{
+    // Core logging settings
+    public ILogger Logger { get; set; } = new ConsoleLogger();
+    public EnvironmentType Environment { get; set; } = EnvironmentType.Development;
+    
+    // Logging behavior
+    public bool EnableMethodEntryExit { get; set; } = true;
+    public bool EnableParameterLogging { get; set; } = true;
+    public bool EnableReturnValueLogging { get; set; } = true;
+    public bool EnableExecutionTimeLogging { get; set; } = true;
+    
+    // Output format
+    public bool UseStructuredOutput { get; set; } = false;
+    
+    // File logging options
+    public string LogFilePath { get; set; } = null;
+    public bool AppendToFile { get; set; } = true;
+    
+    // Advanced options
+    public int MaxStringLength { get; set; } = 10000;
+    public int MaxCollectionItems { get; set; } = 100;
+    public bool IncludeStackTraces { get; set; } = true;
+    public int MaxObjectDepth { get; set; } = 3;
+    public bool EnablePerformanceTracking { get; set; } = true;
+    public LogVerbosity DefaultVerbosity { get; set; } = LogVerbosity.Normal;
+}
+
+public enum EnvironmentType
+{
+    Development,
+    Testing,
+    Staging,
+    Production
+}
+
+public enum LogVerbosity
+{
+    Minimal,   // Only essential information
+    Normal,    // Standard logging with parameters and return values
+    Verbose    // Detailed logging with all available context
+}
+```
+
+### DataLoggerConfiguration
+
+Configuration options for data-oriented logging features.
+
+```csharp
+public class DataLoggerConfiguration
+{
+    public bool EnableDataChangeTracking { get; set; } = true;
+    public int MaxComparisonDepth { get; set; } = 3;
+    public bool IncludeSensitivePropertiesInChanges { get; set; } = false;
+    public bool LogBeforeState { get; set; } = false;
+    public bool LogAfterState { get; set; } = false;
+    public LogLevel DataChangeLogLevel { get; set; } = LogLevel.Info;
+}
+```
+
+## Models
+
+### LogEntry
+
+The core model that represents a log entry.
+
+```csharp
+public class LogEntry
+{
+    public DateTime Timestamp { get; set; }
+    public string MethodName { get; set; }
+    public string ClassName { get; set; }
+    public Dictionary<string, object> Parameters { get; set; }
+    public object ReturnValue { get; set; }
+    public TimeSpan ExecutionTime { get; set; }
+    public LogLevel Level { get; set; }
+    public Exception Exception { get; set; }
+    public string CorrelationId { get; set; }
+    public string ThreadId { get; set; }
+    public string Message { get; set; }
+    
+    // Data change tracking
+    public List<ChangeRecord> DataChanges { get; set; }
+    public bool HasDataChanges => DataChanges != null && DataChanges.Count > 0;
+    public Dictionary<string, object> Context { get; set; }
+    public string EntityType { get; set; }
+    public string EntityId { get; set; }
+    public string OperationType { get; set; }
+    
+    public override string ToString();
+}
+```
+
+### ChangeRecord
+
+Represents a single property change when tracking data changes.
+
+```csharp
+public class ChangeRecord
+{
+    public string PropertyPath { get; set; }
+    public object OldValue { get; set; }
+    public object NewValue { get; set; }
+    public Type PropertyType { get; set; }
+    
+    public override string ToString();
+}
+```
+
+## Utilities
+
+### ObjectComparer
+
+Compares two objects and identifies their differences.
+
+```csharp
+public static class ObjectComparer
+{
+    public static List<ChangeRecord> CompareObjects(
+        object before, 
+        object after, 
+        int maxDepth = 3, 
+        string path = "");
+}
+```
+
+### LogFormatter
+
+Formats log values with sensitivity handling.
+
+```csharp
+public static class LogFormatter
+{
+    public static object FormatForLog(
+        object value, 
+        string parameterName, 
+        ParameterInfo parameterInfo, 
+        int maxDepth = 3);
+        
+    public static string FormatChanges(List<ChangeRecord> changes);
+}
+```
+
+## Usage Examples
+
+### Basic Usage
+
+```csharp
+// Configure logging
+LogManager.Configure(config => 
+{
+    config.Logger = new CompositeLogger(new[] {
+        new ConsoleLogger(),
+        new FileLogger(logFilePath: "application.log")
+    });
+    config.Environment = EnvironmentType.Development;
+});
+
+// Log with attributes
+public class Calculator
+{
+    [LogInfo]
+    public int Add(int a, int b)
     {
-        // The method input, output, and execution time will be logged automatically
-        var result = await PerformDiagnosticChecksAsync(options);
-        return result;
+        return a + b;
     }
+}
+
+// Call with logging
+var calculator = new Calculator();
+var result = LoggedMethodCaller.Call(() => calculator.Add(5, 3));
+```
+
+### Data Change Tracking
+
+```csharp
+public class UserService
+{
+    [TrackDataChanges(IncludeOriginalState = true)]
+    public User UpdateUser([BeforeChange] User existingUser, string newName, string newEmail)
+    {
+        existingUser.Name = newName;
+        existingUser.Email = newEmail;
+        return existingUser;
+    }
+}
+
+// Call with data change tracking
+var user = new User { Id = 1, Name = "John", Email = "john@example.com" };
+LoggedMethodCaller.Call(() => userService.UpdateUser(user, "John Doe", "john.doe@example.com"));
+```
+
+### Progress Logging for Long Operations
+
+```csharp
+[LogInfo]
+[WithProgressLogging(intervalMs: 1000)] // Log progress every second
+public async Task ProcessLargeDatasetAsync()
+{
+    // Long-running operation...
+    for (int i = 0; i < 100; i++)
+    {
+        await Task.Delay(500);
+        // Process data...
+    }
+}
+
+// Call with progress logging
+await LoggedMethodCaller.CallAsync(() => service.ProcessLargeDatasetAsync());
+```
+
+### Throttled Logging
+
+```csharp
+[LogDebug]
+[ThrottleLogging(MaxLogsPerSecond = 5)]
+public double GetValue(int index)
+{
+    // High-frequency operation that will be limited to 5 logs per second
+    return Math.Sqrt(index);
+}
+```
+
+### Sensitive Data Handling
+
+```csharp
+public class User
+{
+    public string Username { get; set; }
+    
+    [MaskInLogs(ShowFirstChars = true, FirstCharsCount = 1)]
+    public string Password { get; set; }
+    
+    [MaskInLogs(ShowFirstChars = true, FirstCharsCount = 3, ShowLastChars = true, LastCharsCount = 4)]
+    public string Email { get; set; }
+    
+    [RedactContents(ReplacementText = "[CREDIT CARD REDACTED]")]
+    public string CreditCardNumber { get; set; }
+    
+    [ExcludeFromLogs]
+    public string ApiKey { get; set; }
+}
+```
+
+### Advanced Router Configuration
+
+```csharp
+// Create a router that sends different logs to different destinations
+var router = new LogRouter(new ConsoleLogger())
+    .AddRoute(entry => entry.Level >= LogLevel.Error, new FileLogger("errors.log"))
+    .AddRoute(entry => entry.Level == LogLevel.Debug, new FileLogger("debug.log"))
+    .AddRoute(entry => entry.Message.Contains("sensitive"), new FileLogger("security.log"))
+    .AddRoute(entry => entry.ClassName.Contains("Payment"), new DatabaseLogger());
+
+LogManager.Configure(config => {
+    config.Logger = router;
+});
+```
+
+### Performance Analysis
+
+```csharp
+// After running your application
+var performanceStats = LogManager.GetPerformanceTracker().GetStats();
+
+foreach (var stat in performanceStats)
+{
+    Console.WriteLine($"Method: {stat.Value.MethodName}");
+    Console.WriteLine($"  Calls: {stat.Value.CallCount}");
+    Console.WriteLine($"  Avg Time: {stat.Value.AverageTime:F2}ms");
+    Console.WriteLine($"  Min Time: {stat.Value.MinTime}ms");
+    Console.WriteLine($"  Max Time: {stat.Value.MaxTime}ms");
+    Console.WriteLine($"  Median: {stat.Value.MedianTime:F2}ms");
 }
 ```
 
