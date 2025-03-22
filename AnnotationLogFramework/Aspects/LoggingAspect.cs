@@ -8,10 +8,6 @@ namespace AnnotationLogger
     /// </summary>
     public static class LoggingAspect
     {
-        // Method for implementing the actual interception would typically require
-        // a library like PostSharp, Castle DynamicProxy, or custom IL weaving
-        // This is a simplified version that relies on manual wrapping
-        
         public static void WrapMethod(Action originalMethod, 
             [CallerMemberName] string methodName = "",
             [CallerFilePath] string sourceFilePath = "",

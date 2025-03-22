@@ -35,7 +35,7 @@ namespace AnnotationLogger
             _minimumLevel = minimumLevel;
             _useStructuredOutput = useStructuredOutput;
             _appendToFile = appendToFile;
-            
+    
             // If no path provided, create a default log file in the application directory
             if (string.IsNullOrEmpty(logFilePath))
             {
@@ -44,16 +44,16 @@ namespace AnnotationLogger
                 string timestamp = DateTime.Now.ToString("yyyyMMdd");
                 logFilePath = Path.Combine(appDirectory, $"{appName}_{timestamp}.log");
             }
-            
+    
             _logFilePath = logFilePath;
-            
-            // Create directory if it doesn't exist
+    
+            // Create directory if it doesn't exist - only if there's an actual directory path
             string directoryPath = Path.GetDirectoryName(_logFilePath);
-            if (!Directory.Exists(directoryPath))
+            if (!string.IsNullOrEmpty(directoryPath) && !Directory.Exists(directoryPath))
             {
                 Directory.CreateDirectory(directoryPath);
             }
-            
+    
             // Create or clear the log file if not appending
             if (!_appendToFile && File.Exists(_logFilePath))
             {

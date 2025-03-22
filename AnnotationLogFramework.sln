@@ -4,6 +4,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AnnotationLogFramework", "A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleApp1", "ConsoleApp1\ConsoleApp1.csproj", "{51256346-47A0-4186-9134-BEBB77B3A2EE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AnnotationLogExample", "AnnotationLogExample\AnnotationLogExample.csproj", "{0968750D-F8C1-43B6-95F4-D03CEA088887}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{51256346-47A0-4186-9134-BEBB77B3A2EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{51256346-47A0-4186-9134-BEBB77B3A2EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{51256346-47A0-4186-9134-BEBB77B3A2EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0968750D-F8C1-43B6-95F4-D03CEA088887}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0968750D-F8C1-43B6-95F4-D03CEA088887}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0968750D-F8C1-43B6-95F4-D03CEA088887}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0968750D-F8C1-43B6-95F4-D03CEA088887}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

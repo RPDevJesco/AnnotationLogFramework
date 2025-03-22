@@ -5,11 +5,15 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using AnnotationLogger.Performance;
+using AnnotationLogger.Routing;
+using AnnotationLogger.Throttling;
 
 namespace AnnotationLogger
 {
     /// <summary>
-    /// Logging manager that handles the interception, logging, and data change tracking
+    /// Enhanced logging manager that handles the interception, logging, data change tracking, 
+    /// performance analytics, and advanced log routing.
     /// </summary>
     public static class LogManager
     {
@@ -17,6 +21,8 @@ namespace AnnotationLogger
 
         private static LoggerConfiguration _configuration = new LoggerConfiguration();
         private static DataLoggerConfiguration _dataConfiguration = new DataLoggerConfiguration();
+        private static readonly PerformanceTracker _performanceTracker = new PerformanceTracker();
+        private static readonly LogThrottler _throttler = new LogThrottler();
 
         /// <summary>
         /// Configure general logging features
@@ -48,6 +54,11 @@ namespace AnnotationLogger
         /// Get the current data logging configuration
         /// </summary>
         public static DataLoggerConfiguration GetDataConfiguration() => _dataConfiguration;
+
+        /// <summary>
+        /// Get the performance tracker instance
+        /// </summary>
+        public static PerformanceTracker GetPerformanceTracker() => _performanceTracker;
 
         #endregion
 
@@ -175,9 +186,18 @@ namespace AnnotationLogger
             var stopwatch = Stopwatch.StartNew();
             Exception exception = null;
             TResult result = default;
+            ProgressLogger progressLogger = null;
 
             try
             {
+                // Set up progress logging if enabled
+                if (logAttribute is IProgressLoggingOptions options && options.EnableProgressLogging)
+                {
+                    progressLogger = new ProgressLogger(
+                        $"{declaringType.Name}.{methodName}",
+                        options.ProgressLoggingIntervalMs);
+                }
+
                 LogMethodEntry(methodName, declaringType, parameters, parameterInfos, logAttribute);
                 result = methodCall();
                 return result;
@@ -190,6 +210,15 @@ namespace AnnotationLogger
             finally
             {
                 stopwatch.Stop();
+                
+                // Track method performance
+                _performanceTracker.TrackExecutionTime(
+                    $"{declaringType.Name}.{methodName}",
+                    stopwatch.ElapsedMilliseconds);
+                
+                // Dispose progress logger if used
+                progressLogger?.Dispose();
+                
                 LogMethodExit(methodName, declaringType, parameters, parameterInfos, result, stopwatch.Elapsed,
                     exception, logAttribute);
             }
@@ -205,9 +234,18 @@ namespace AnnotationLogger
             var stopwatch = Stopwatch.StartNew();
             Exception exception = null;
             TResult result = default;
+            ProgressLogger progressLogger = null;
 
             try
             {
+                // Set up progress logging if enabled
+                if (logAttribute is IProgressLoggingOptions options && options.EnableProgressLogging)
+                {
+                    progressLogger = new ProgressLogger(
+                        $"{declaringType.Name}.{methodName}",
+                        options.ProgressLoggingIntervalMs);
+                }
+
                 LogMethodEntry(methodName, declaringType, parameters, parameterInfos, logAttribute);
                 result = await methodCall();
                 return result;
@@ -220,6 +258,15 @@ namespace AnnotationLogger
             finally
             {
                 stopwatch.Stop();
+                
+                // Track method performance
+                _performanceTracker.TrackExecutionTime(
+                    $"{declaringType.Name}.{methodName}",
+                    stopwatch.ElapsedMilliseconds);
+                
+                // Dispose progress logger if used
+                progressLogger?.Dispose();
+                
                 LogMethodExit(methodName, declaringType, parameters, parameterInfos, result, stopwatch.Elapsed,
                     exception, logAttribute);
             }
@@ -346,9 +393,18 @@ namespace AnnotationLogger
             var stopwatch = Stopwatch.StartNew();
             Exception exception = null;
             TResult result = default;
+            ProgressLogger progressLogger = null;
 
             try
             {
+                // Set up progress logging if enabled
+                if (logAttribute is IProgressLoggingOptions options && options.EnableProgressLogging)
+                {
+                    progressLogger = new ProgressLogger(
+                        $"{declaringType.Name}.{methodName}",
+                        options.ProgressLoggingIntervalMs);
+                }
+
                 // Log method entry
                 LogMethodEntry(methodName, declaringType, parameters, parameterInfos, logAttribute);
 
@@ -390,18 +446,18 @@ namespace AnnotationLogger
                             DataChanges = changes,
                             EntityType = entityType ?? beforeObject.GetType().Name,
                             EntityId = entityId,
-                            OperationType = methodName, // Use method name as operation type by default
+                            OperationType = dataChangeAttribute.OperationType ?? methodName,
                             CorrelationId = CorrelationManager.CurrentCorrelationId,
                             ThreadId = Thread.CurrentThread.ManagedThreadId.ToString(),
                             Context = context
                         };
 
                         // Log full before state if configured
-                        if (_dataConfiguration.LogBeforeState)
+                        if (_dataConfiguration.LogBeforeState || dataChangeAttribute.IncludeOriginalState)
                             entry.Context["BeforeState"] = LogFormatter.FormatForLog(beforeObject, "BeforeState", null);
 
                         // Log full after state if configured
-                        if (_dataConfiguration.LogAfterState)
+                        if (_dataConfiguration.LogAfterState || dataChangeAttribute.IncludeUpdatedState)
                             entry.Context["AfterState"] = LogFormatter.FormatForLog(afterObject, "AfterState", null);
 
                         _configuration.Logger.Log(entry);
@@ -418,6 +474,14 @@ namespace AnnotationLogger
             finally
             {
                 stopwatch.Stop();
+                
+                // Track method performance
+                _performanceTracker.TrackExecutionTime(
+                    $"{declaringType.Name}.{methodName}",
+                    stopwatch.ElapsedMilliseconds);
+                
+                // Dispose progress logger if used
+                progressLogger?.Dispose();
 
                 // Log method exit
                 LogMethodExit(methodName, declaringType, parameters, parameterInfos,
@@ -467,9 +531,18 @@ namespace AnnotationLogger
             var stopwatch = Stopwatch.StartNew();
             Exception exception = null;
             TResult result = default;
+            ProgressLogger progressLogger = null;
 
             try
             {
+                // Set up progress logging if enabled
+                if (logAttribute is IProgressLoggingOptions options && options.EnableProgressLogging)
+                {
+                    progressLogger = new ProgressLogger(
+                        $"{declaringType.Name}.{methodName}",
+                        options.ProgressLoggingIntervalMs);
+                }
+
                 // Log method entry
                 LogMethodEntry(methodName, declaringType, parameters, parameterInfos, logAttribute);
 
@@ -508,18 +581,18 @@ namespace AnnotationLogger
                             DataChanges = changes,
                             EntityType = entityType ?? beforeObject.GetType().Name,
                             EntityId = entityId,
-                            OperationType = methodName, // Use method name as operation type by default
+                            OperationType = dataChangeAttribute.OperationType ?? methodName,
                             CorrelationId = CorrelationManager.CurrentCorrelationId,
                             ThreadId = Thread.CurrentThread.ManagedThreadId.ToString(),
                             Context = context
                         };
 
                         // Log full before state if configured
-                        if (_dataConfiguration.LogBeforeState)
+                        if (_dataConfiguration.LogBeforeState || dataChangeAttribute.IncludeOriginalState)
                             entry.Context["BeforeState"] = LogFormatter.FormatForLog(beforeObject, "BeforeState", null);
 
                         // Log full after state if configured
-                        if (_dataConfiguration.LogAfterState)
+                        if (_dataConfiguration.LogAfterState || dataChangeAttribute.IncludeUpdatedState)
                             entry.Context["AfterState"] = LogFormatter.FormatForLog(afterObject, "AfterState", null);
 
                         _configuration.Logger.Log(entry);
@@ -536,6 +609,14 @@ namespace AnnotationLogger
             finally
             {
                 stopwatch.Stop();
+                
+                // Track method performance
+                _performanceTracker.TrackExecutionTime(
+                    $"{declaringType.Name}.{methodName}",
+                    stopwatch.ElapsedMilliseconds);
+                
+                // Dispose progress logger if used
+                progressLogger?.Dispose();
 
                 // Log method exit
                 LogMethodExit(methodName, declaringType, parameters, parameterInfos,
@@ -559,9 +640,18 @@ namespace AnnotationLogger
             // So we'll just do regular logging
             var stopwatch = Stopwatch.StartNew();
             Exception exception = null;
+            ProgressLogger progressLogger = null;
 
             try
             {
+                // Set up progress logging if enabled
+                if (logAttribute is IProgressLoggingOptions options && options.EnableProgressLogging)
+                {
+                    progressLogger = new ProgressLogger(
+                        $"{declaringType.Name}.{methodName}",
+                        options.ProgressLoggingIntervalMs);
+                }
+
                 // Log method entry
                 LogMethodEntry(methodName, declaringType, parameters, parameterInfos, logAttribute);
 
@@ -576,6 +666,14 @@ namespace AnnotationLogger
             finally
             {
                 stopwatch.Stop();
+                
+                // Track method performance
+                _performanceTracker.TrackExecutionTime(
+                    $"{declaringType.Name}.{methodName}",
+                    stopwatch.ElapsedMilliseconds);
+                
+                // Dispose progress logger if used
+                progressLogger?.Dispose();
 
                 // Log method exit
                 LogMethodExit(methodName, declaringType, parameters, parameterInfos,
@@ -593,7 +691,7 @@ namespace AnnotationLogger
         public static void LogMethodEntry(string methodName, Type declaringType, object[] parameters,
             ParameterInfo[] parameterInfos, LogAttributeBase logAttribute)
         {
-            if (!ShouldLog(logAttribute)) return;
+            if (!ShouldLog(logAttribute, methodName, declaringType)) return;
 
             var entry = CreateBaseLogEntry(methodName, declaringType, logAttribute);
             entry.Message = $"Entering {declaringType.Name}.{methodName}";
@@ -617,7 +715,7 @@ namespace AnnotationLogger
             object result, TimeSpan executionTime, Exception exception, LogAttributeBase logAttribute)
         {
             // Prevent duplicate logging
-            if (!ShouldLog(logAttribute) && exception == null) return;
+            if (!ShouldLog(logAttribute, methodName, declaringType) && exception == null) return;
 
             var entry = CreateBaseLogEntry(methodName, declaringType, logAttribute);
             entry.Level = exception != null ? LogLevel.Error : logAttribute?.Level ?? LogLevel.Info;
@@ -762,9 +860,9 @@ namespace AnnotationLogger
         }
 
         /// <summary>
-        /// Check if we should log based on environment and configuration
+        /// Check if we should log based on environment, configuration, and throttling
         /// </summary>
-        private static bool ShouldLog(LogAttributeBase logAttribute)
+        private static bool ShouldLog(LogAttributeBase logAttribute, string methodName, Type declaringType)
         {
             if (logAttribute == null)
                 return _configuration?.Logger?.IsEnabled(LogLevel.Info) ?? false;
@@ -772,6 +870,18 @@ namespace AnnotationLogger
             if (logAttribute is LogDebugAttribute && _configuration.Environment == EnvironmentType.Production)
             {
                 return false;
+            }
+
+            // Check for throttling attribute
+            var method = declaringType.GetMethod(methodName);
+            var throttleAttr = method?.GetCustomAttribute<ThrottleLoggingAttribute>();
+            if (throttleAttr != null)
+            {
+                var throttleKey = $"{declaringType.Name}.{methodName}";
+                if (!_throttler.ShouldLog(throttleKey, throttleAttr.MaxLogsPerSecond))
+                {
+                    return false; // Skip logging due to throttling
+                }
             }
 
             return _configuration?.Logger?.IsEnabled(logAttribute.Level) ?? false;
@@ -816,7 +926,7 @@ namespace AnnotationLogger
                 return $"{{ {string.Join(", ", entries)} }}";
             }
 
-            // Handle Dictionary<string, object>  
+// Handle Dictionary<string, object>  
             if (dictObj is Dictionary<string, object> objDict)
             {
                 var entries = objDict.Select(kvp =>
@@ -885,7 +995,7 @@ namespace AnnotationLogger
 
             foreach (var item in collection)
             {
-                if (i >= 5) // Limit samples
+                if (i >= 10) // Limit items for readability
                 {
                     items.Add("...");
                     break;
@@ -1282,6 +1392,132 @@ namespace AnnotationLogger
 
             // Return primitives and anything else directly
             return result.ToString();
+        }
+
+        #endregion
+
+        #region Direct Logging Methods
+
+        /// <summary>
+        /// Directly logs a message at the specified level with optional context
+        /// </summary>
+        /// <param name="level">Log level</param>
+        /// <param name="message">Log message</param>
+        /// <param name="context">Optional contextual data</param>
+        public static void Log(LogLevel level, string message, Dictionary<string, object> context = null)
+        {
+            if (_configuration?.Logger == null || !_configuration.Logger.IsEnabled(level))
+                return;
+
+            // Create a basic log entry
+            var entry = new LogEntry
+            {
+                Timestamp = DateTime.UtcNow,
+                Level = level,
+                Message = message,
+                MethodName = new StackFrame(1).GetMethod()?.Name ?? "Unknown",
+                ClassName = new StackFrame(1).GetMethod()?.DeclaringType?.Name ?? "Unknown",
+                CorrelationId = CorrelationManager.CurrentCorrelationId,
+                ThreadId = Thread.CurrentThread.ManagedThreadId.ToString(),
+                Context = context != null ? new Dictionary<string, object>(context) : null
+            };
+
+            // Add global context
+            EnrichWithContext(entry);
+
+            _configuration.Logger.Log(entry);
+        }
+
+        /// <summary>
+        /// Logs a message at Trace level
+        /// </summary>
+        public static void Trace(string message, Dictionary<string, object> context = null)
+        {
+            Log(LogLevel.Trace, message, context);
+        }
+
+        /// <summary>
+        /// Logs a message at Debug level
+        /// </summary>
+        public static void Debug(string message, Dictionary<string, object> context = null)
+        {
+            Log(LogLevel.Debug, message, context);
+        }
+
+        /// <summary>
+        /// Logs a message at Info level
+        /// </summary>
+        public static void Info(string message, Dictionary<string, object> context = null)
+        {
+            Log(LogLevel.Info, message, context);
+        }
+
+        /// <summary>
+        /// Logs a message at Warning level
+        /// </summary>
+        public static void Warning(string message, Dictionary<string, object> context = null)
+        {
+            Log(LogLevel.Warning, message, context);
+        }
+
+        /// <summary>
+        /// Logs a message at Error level
+        /// </summary>
+        public static void Error(string message, Dictionary<string, object> context = null)
+        {
+            Log(LogLevel.Error, message, context);
+        }
+
+        /// <summary>
+        /// Logs a message at Critical level
+        /// </summary>
+        public static void Critical(string message, Dictionary<string, object> context = null)
+        {
+            Log(LogLevel.Critical, message, context);
+        }
+
+        /// <summary>
+        /// Logs an exception with optional custom message
+        /// </summary>
+        public static void Exception(Exception exception, string message = null, Dictionary<string, object> context = null)
+        {
+            if (_configuration?.Logger == null || !_configuration.Logger.IsEnabled(LogLevel.Error))
+                return;
+
+            context = context ?? new Dictionary<string, object>();
+            
+            // Add exception details to context
+            context["ExceptionType"] = exception.GetType().FullName;
+            context["ExceptionMessage"] = exception.Message;
+            
+            if (exception.StackTrace != null)
+            {
+                context["StackTrace"] = exception.StackTrace;
+            }
+            
+            if (exception.InnerException != null)
+            {
+                context["InnerException"] = exception.InnerException.ToString();
+            }
+
+            // Create a basic log entry
+            var entry = new LogEntry
+            {
+                Timestamp = DateTime.UtcNow,
+                Level = LogLevel.Error,
+                Message = message ?? exception.Message,
+                MethodName = new StackFrame(1).GetMethod()?.Name ?? "Unknown",
+                ClassName = new StackFrame(1).GetMethod()?.DeclaringType?.Name ?? "Unknown",
+                CorrelationId = CorrelationManager.CurrentCorrelationId,
+                ThreadId = Thread.CurrentThread.ManagedThreadId.ToString(),
+                Exception = exception,
+                Context = context
+            };
+
+            // Add global context
+            EnrichWithContext(entry);
+
+            _configuration.Logger.Log(entry);
         }
 
         #endregion
