@@ -391,7 +391,8 @@ LogManager.Configure(config =>
 // Configure logging to a SQLite database
 string dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs/logs.db");
 var dbLogger = new DatabaseLogger(LogLevel.Info, $"Data Source={dbPath}");
-
+// Create the logs directory if it doesn't exist
+Directory.CreateDirectory(logDirectory);
 LogManager.Configure(config => 
 {
     config.Logger = new CompositeLogger(new[] {
